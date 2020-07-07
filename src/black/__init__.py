@@ -241,6 +241,7 @@ class Mode:
     line_length: int = DEFAULT_LINE_LENGTH
     string_normalization: bool = True
     is_pyi: bool = False
+    strip_typing: bool = False
 
     def get_cache_key(self) -> str:
         if self.target_versions:
@@ -371,6 +372,13 @@ def target_version_option_callback(
     ),
 )
 @click.option(
+    "--strip-typing",
+    is_flag=True,
+    help=(
+        "Remove type stubs from input files"
+    ),
+)
+@click.option(
     "-S",
     "--skip-string-normalization",
     is_flag=True,
@@ -484,6 +492,7 @@ def main(
     color: bool,
     fast: bool,
     pyi: bool,
+    strip_typing: bool,
     skip_string_normalization: bool,
     quiet: bool,
     verbose: bool,
@@ -500,10 +509,16 @@ def main(
     else:
         # We'll autodetect later.
         versions = set()
+    if strip_typing and not fast:
+        out("Unsafe mode selected! 🐲️ ⚠️  🐲")
+        out("--strip-typing causes semantic changes. Re-run with --fast to bypass checks.")
+        ctx.exit(1)
+
     mode = Mode(
         target_versions=versions,
         line_length=line_length,
         is_pyi=pyi,
+        strip_typing=strip_typing,
         string_normalization=not skip_string_normalization,
     )
     if config and verbose:
@@ -958,6 +973,7 @@ def format_str(src_contents: str, *, mode: Mode) -> FileContent:
         remove_u_prefix="unicode_literals" in future_imports
         or supports_feature(versions, Feature.UNICODE_LITERALS),
         is_pyi=mode.is_pyi,
+        strip_typing=mode.strip_typing,
         normalize_strings=mode.string_normalization,
     )
     elt = EmptyLineTracker(is_pyi=mode.is_pyi)
@@ -1918,6 +1934,7 @@ class LineGenerator(Visitor[Line]):
     """
 
     is_pyi: bool = False
+    strip_typing: bool = False
     normalize_strings: bool = True
     current_line: Line = field(default_factory=Line)
     remove_u_prefix: bool = False
@@ -2003,16 +2020,28 @@ class LineGenerator(Visitor[Line]):
         invisible parens should be put.
         """
         normalize_invisible_parens(node, parens_after=parens)
+        skip = False
         for child in node.children:
             if child.type == token.NAME and child.value in keywords:  # type: ignore
                 yield from self.line()
-
-            yield from self.visit(child)
+            if skip:
+                skip = False
+            elif self.strip_typing and child.type == token.RARROW and child.value == "->":
+                # This is a right arrow
+                skip = True
+            else:
+                yield from self.visit(child)
 
     def visit_suite(self, node: Node) -> Iterator[Line]:
         """Visit a suite."""
         if self.is_pyi and is_stub_suite(node):
             yield from self.visit(node.children[2])
+        else:
+            yield from self.visit_default(node)
+
+    def visit_tname(self, node:Node) -> Iterator[Line]:
+        if self.strip_typing:
+            yield from self.visit_default(node.children[0])
         else:
             yield from self.visit_default(node)
 
@@ -6350,6 +6379,7 @@ def read_cache(mode: Mode) -> Cache:
 
     If it is not well formed, the call to write_cache later should resolve the issue.
     """
+    return {}
     cache_file = get_cache_file(mode)
     if not cache_file.exists():
         return {}

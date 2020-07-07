@@ -26,8 +26,17 @@ becomes transparent after a while and you can focus on the content instead.
 
 _Black_ makes code review faster by producing the smallest diffs possible.
 
-Try it out now using the [Black Playground](https://black.now.sh). Watch the
-[PyCon 2019 talk](https://youtu.be/esZLCuWs_2Y) to learn more.
+
+---
+
+This is a fork of Black that includes some features unrelated to code formatting, as a
+quick fix for doing manipulation of Python code at scale.
+
+ * Added `--strip-typing` option to remove type hints from function definition lines.
+
+Do not contact the Black developers with bug reports about this version of the software,
+please stick to official versions of black. You may report bugs on this feature directly
+to Matthew Wilkes, but be aware that this code is "hack" quality, not production standard.
 
 ---
 
